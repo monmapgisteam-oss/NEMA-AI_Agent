@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+  <meta charset="UTF-8" />
+  <title>ОБЕГ Командын Штаб — Дундговь (3 ЦБ)</title>
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+  <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      overflow: hidden;  /* Whole page does NOT scroll — only chat panel inside */
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+    .app { display: grid; grid-template-columns: 1fr 480px; height: 100vh; overflow: hidden; }
+
+    .map-area { position: relative; height: 100%; overflow: hidden; }
+    arcgis-map { width: 100%; height: 100%; }
+
+    /* Active filter banner over the map */
+    .filter-banner {
+      position: absolute;
+      top: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(200, 16, 46, 0.95);
+      color: white;
+      padding: 8px 14px 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+      display: none;
+      align-items: center;
+      gap: 10px;
+      max-width: 80%;
+      z-index: 10;
+    }
+    .filter-banner.show { display: flex; }
+    .filter-banner .x {
+      cursor: pointer;
+      background: rgba(255,255,255,0.25);
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 14px;
+    }
+    .filter-banner .x:hover { background: rgba(255,255,255,0.4); }
+
+    .chat { display: flex; flex-direction: column; height: 100%;
+            min-height: 0;  /* CRITICAL: lets flex child overflow-y: auto work */
+            background: #f8f9fb; border-left: 1px solid #e3e6ec; }
+    .chat-header {
+      padding: 14px 18px;
+      background: linear-gradient(135deg, #c8102e 0%, #8b0a1f 100%);
+      color: white; display: flex; align-items: center; gap: 10px;
+    }
+    .chat-header .logo { font-size: 22px; }
+    .chat-header .title { font-weight: 600; font-size: 15px; line-height: 1.2; }
+    .chat-header .subtitle {
+      font-size: 11px; opacity: 0.95; margin-top: 4px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .model-select {
+      background: rgba(255,255,255,0.18);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      outline: none;
+    }
+    .model-select option { background: #8b0a1f; color: white; }
+    .cost-tag {
+      background: rgba(0,0,0,0.25);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .info-btn {
+      margin-left: auto; background: rgba(255,255,255,0.2);
+      border: none; color: white; width: 32px; height: 32px;
+      border-radius: 50%; cursor: pointer; font-size: 16px; font-weight: bold;
+    }
+
+    .messages { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 16px;
+                display: flex; flex-direction: column; gap: 10px; }
+    .msg {
+      max-width: 92%;
+      padding: 10px 14px; border-radius: 14px;
+      font-size: 14px; line-height: 1.5;
+      word-wrap: break-word;
+    }
+    .msg.user {
+      align-self: flex-end; background: #c8102e; color: white;
+      border-bottom-right-radius: 4px; white-space: pre-wrap;
+    }
+    .msg.assistant {
+      align-self: flex-start; background: white; color: #1f2937;
+      border: 1px solid #e3e6ec; border-bottom-left-radius: 4px;
+    }
+    .msg.assistant h1, .msg.assistant h2, .msg.assistant h3 {
+      margin: 8px 0 4px; font-size: 14px; font-weight: 700;
+    }
+    .msg.assistant h2 { font-size: 15px; }
+    .msg.assistant ul, .msg.assistant ol { margin: 4px 0; padding-left: 20px; }
+    .msg.assistant li { margin: 2px 0; }
+    .msg.assistant strong { font-weight: 700; }
+    .msg.system {
+      align-self: center; background: #fef3c7; color: #92400e;
+      font-size: 12px; max-width: 100%; text-align: center;
+    }
+    .msg .map-action {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 4px 10px;
+      background: #f0fdf4;
+      color: #065f46;
+      font-size: 11px;
+      border-radius: 10px;
+      border: 1px solid #bbf7d0;
+    }
+    .tier-badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px;
+      margin-bottom: 6px; letter-spacing: 0.3px;
+    }
+    .tier-1 { background: #d1fae5; color: #065f46; }
+    .tier-2 { background: #fef3c7; color: #92400e; }
+    .tier-3 { background: #fed7aa; color: #9a3412; }
+    .tier-4 { background: #fecaca; color: #991b1b; }
+    .disclaimer {
+      margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+      font-size: 12px; font-style: italic;
+    }
+    .disclaimer.tier-3 { background: #fff7ed; color: #9a3412; border-left: 3px solid #f97316; }
+    .disclaimer.tier-4 { background: #fef2f2; color: #991b1b; border-left: 3px solid #dc2626; }
+
+    .chart-wrap {
+      background: #fafbfc; border: 1px solid #e3e6ec; border-radius: 8px;
+      padding: 10px; margin: 8px 0; height: 260px;
+    }
+
+    .typing {
+      align-self: flex-start; padding: 10px 14px;
+      color: #6b7280; font-size: 13px; font-style: italic;
+    }
+    .typing .dot {
+      display: inline-block; width: 6px; height: 6px;
+      background: #9ca3af; border-radius: 50%; margin: 0 1px;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+    .typing .dot:nth-child(1) { animation-delay: -0.32s; }
+    .typing .dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    .tier-guide {
+      display: none; padding: 14px 16px; background: white;
+      border-bottom: 1px solid #e3e6ec; max-height: 60vh; overflow-y: auto;
+    }
+    .tier-guide.show { display: block; }
+    .tier-guide h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+    .tier-row {
+      padding: 8px 10px; border-radius: 8px; margin-bottom: 6px;
+      font-size: 12px; line-height: 1.45;
+    }
+    .tier-row.t1 { background: #f0fdf4; border-left: 3px solid #10b981; }
+    .tier-row.t2 { background: #fffbeb; border-left: 3px solid #f59e0b; }
+    .tier-row.t3 { background: #fff7ed; border-left: 3px solid #f97316; }
+    .tier-row.t4 { background: #fef2f2; border-left: 3px solid #dc2626; }
+    .tier-row strong { display: block; margin-bottom: 3px; }
+    .tier-row .ex { font-size: 11px; color: #4b5563; }
+
+    .suggestions {
+      padding: 8px 12px; background: white;
+      border-top: 1px solid #e3e6ec;
+      max-height: 130px; overflow-y: auto;
+    }
+    .sug-group { margin-bottom: 4px; }
+    .sug-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+      color: #6b7280; margin: 4px 0 4px;
+    }
+    .sug-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .suggestion {
+      font-size: 11px; padding: 5px 9px; border-radius: 12px;
+      cursor: pointer; border: 1px solid;
+    }
+    .suggestion.t1 { background: #f0fdf4; color: #065f46; border-color: #bbf7d0; }
+    .suggestion.t2 { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .suggestion.t3 { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
+    .suggestion.map { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+    .suggestion:hover { filter: brightness(0.96); }
+
+    .input-area {
+      padding: 12px 16px; background: white;
+      border-top: 1px solid #e3e6ec; display: flex; gap: 8px;
+    }
+    .input-area textarea {
+      flex: 1; border: 1px solid #d1d5db; border-radius: 18px;
+      padding: 9px 14px; font-size: 14px; font-family: inherit;
+      resize: none; outline: none; max-height: 100px;
+    }
+    .input-area textarea:focus { border-color: #c8102e; }
+    .input-area button {
+      background: #c8102e; color: white; border: none;
+      border-radius: 18px; padding: 0 18px;
+      cursor: pointer; font-weight: 600; font-size: 13px;
+    }
+    .input-area button:disabled { background: #d1d5db; cursor: not-allowed; }
+
+    .key-dialog {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 9999;
+    }
+    .key-dialog .box {
+      background: white; border-radius: 12px; padding: 28px;
+      max-width: 460px; box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    }
+    .key-dialog h2 { margin: 0 0 8px; color: #c8102e; }
+    .key-dialog p { color: #4b5563; font-size: 14px; line-height: 1.5; margin: 8px 0; }
+    .key-dialog input {
+      width: 100%; padding: 10px 12px; border: 1px solid #d1d5db;
+      border-radius: 8px; font-size: 13px; font-family: monospace; margin: 12px 0;
+    }
+    .key-dialog button {
+      background: #c8102e; color: white; border: none;
+      border-radius: 8px; padding: 10px 20px;
+      cursor: pointer; font-weight: 600; font-size: 14px;
+    }
+
+    @media (max-width: 800px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: 1fr 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="map-area">
+      <arcgis-map id="map" item-id="3c499a2f6a0840f28588ae30729139ee"></arcgis-map>
+      <div class="filter-banner" id="filterBanner">
+        <span>🔍</span>
+        <span id="filterText"></span>
+        <span class="x" onclick="clearMapFilter()" title="Шүүлт цэвэрлэх">✕</span>
+      </div>
+    </div>
+
+    <div class="chat">
+      <div class="chat-header">
+        <div class="logo">🚨</div>
+        <div style="flex:1">
+          <div class="title">ОБЕГ Командын Штаб — Дундговь</div>
+          <div class="subtitle">
+            <select id="modelSelect" onchange="changeModel()" class="model-select">
+              <option value="claude-haiku-4-5-20251001">⚡ Claude Haiku 4.5 (cheap)</option>
+              <option value="claude-sonnet-4-5">💎 Claude Sonnet 4.5 (best)</option>
+            </select>
+            <span id="costEstimate" class="cost-tag">~$0/asuult</span>
+          </div>
+        </div>
+        <button class="info-btn" onclick="resetKeys()" title="API key солих" style="margin-right:6px">🔑</button>
+        <button class="info-btn" onclick="toggleGuide()" title="Асуултын ангилал">i</button>
+      </div>
+
+      <div class="tier-guide" id="tierGuide">
+        <h3>📋 Асуултын 4 түвшин</h3>
+        <div class="tier-row t1"><strong>🟢 1-р түвшин — Аюулгүй</strong>
+          <div>Энгийн өгөгдлийн харах, тоолох</div></div>
+        <div class="tier-row t2"><strong>🟡 2-р түвшин — Шинжилгээ</strong>
+          <div>Тоон тооцоо, статистик</div></div>
+        <div class="tier-row t3"><strong>🟠 3-р түвшин — Дүгнэлт</strong>
+          <div>AI-ийн ажиглалт. Эцсийн шийдэлд бус.</div></div>
+        <div class="tier-row t4"><strong>🔴 4-р түвшин — Үйл ажиллагааны шийдвэр</strong>
+          <div><strong>AI ХАРИУЛАХГҮЙ.</strong></div></div>
+      </div>
+
+      <div class="messages" id="messages">
+        <div class="msg assistant">
+          <strong>Сайн байна уу, удирдлага! 👋</strong><br><br>
+          🚨 <strong>Дундговь — Командын штаб (3 гамшгийн дадлага)</strong><br><br>
+          📋 <strong>3 Цагийн байдал:</strong><br>
+          🌍 <strong>ЦБ-1 Газар хөдлөлт</strong> — Сайнцагаан 6.5 магн. (Өрнөл 1/2)<br>
+          ❄ <strong>ЦБ-2 Зуд</strong> — 5000+ мал хорогдсон, -25°C<br>
+          🦠 <strong>ЦБ-3 Шүлхий</strong> — 7 сум, 4000+ мэдрэмтгий мал<br><br>
+          📊 <strong>15 мэдээллийн эх</strong> + 12 алба + 7 баг + Survey ⭐<br><br>
+          💡 <strong>Жишээ асуултууд:</strong><br>
+          • "Зудаар хэдэн мал хорогдов?"<br>
+          • "Шүлхий аль сумд тархсан?"<br>
+          • "Газар хөдлөлтөнд өрнөл 1-р хэдэн хүн нас барсан?"<br>
+          • "Сайнцагаан суманд хэдэн ачааны машин үлдсэн?"<br>
+          • "12 байгууллагаас аль нь хариу үйлдээгүй?"
+        </div>
+      </div>
+
+      <div class="suggestions" id="suggestions">
+        <div class="sug-group">
+          <div class="sug-label">📊 СТАТУС (Survey)</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Одоо ямар арга хэмжээ явагдаж байна?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">12 байгууллагаас аль нь хариу үйлдээгүй?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Сайнцагаан суманд юу хийгдэж байна?</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">🌍 ЦБ-1 ГАЗАР ХӨДЛӨЛТ</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Өрнөл 1-р хэдэн хүн нас барах вэ?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Өрнөл 1 vs Өрнөл 2 хохирлыг харьцуул</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Сайнцагаанд хэдэн барилга нурсан?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Хамгийн их өртсөн 5 сум</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">❄ ЦБ-2 ЗУД</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Зудаар хэдэн мал хорогдсон вэ?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Зудын талаар бүх мэдээллийг харуул</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Адаацаг сумын Ар-Урт багт ямар тусламж шаардлагатай?</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">🦠 ЦБ-3 ШҮЛХИЙ</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Шүлхий аль сумд тархсан вэ?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Хорио цээрийн бүсэд хэдэн мал бий?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Мал эмнэлэгчид ямар арга хэмжээ авсан?</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">⚖ НӨӨЦ ХАРЬЦУУЛАЛТ</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Сайнцагаан суманд хэдэн ачааны машин үлдсэн?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Гамшгийн үед хэдэн эмч дайчилж чадах вэ?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Дайчилсан vs боломжтой техник харьцуул</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">🏛 7 БАГИЙН АЖИЛЛАГАА</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Ажиллагааны баг юу хийсэн?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Нөөц, хангалтын баг бэлэн үү?</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Холбоо зохион байгуулалт сэргэсэн үү?</div>
+          </div>
+        </div>
+        <div class="sug-group">
+          <div class="sug-label">🧭 НАВИГАЦ</div>
+          <div class="sug-list">
+            <div class="suggestion map" onclick="sendSuggestion(this)">Сайнцагаан руу oч</div>
+            <div class="suggestion map" onclick="sendSuggestion(this)">Шүүлтүүр арилга</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <textarea id="input" rows="1" placeholder="Асуултаа бичнэ үү..." onkeydown="onKey(event)"></textarea>
+        <button id="send" onclick="send()">Илгээх</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="key-dialog" id="keyDialog">
+    <div class="box">
+      <h2>🔑 Anthropic API Key</h2>
+      <p>Claude API ашиглахын тулд key хэрэгтэй. Browser-т хадгалагдана.</p>
+
+      <div style="background:#f3f4f6;padding:10px;border-radius:8px;margin:12px 0;font-size:12px">
+        <strong>Key хаанаас авах вэ?</strong><br>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a><br>
+        → Sign in → Create Key → Copy
+      </div>
+
+      <label style="display:block;font-size:13px;margin-top:8px;font-weight:500">Anthropic API Key:</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-..." />
+      <input type="hidden" id="geminiKeyInput" value="" />
+
+      <button onclick="saveKey()" style="margin-top:8px">Үргэлжлүүлэх</button>
+    </div>
+  </div>
+
+<script>
+// 5 feature service for Dundgobi command center
+const FEATURE_LAYERS = {
+  medeelel: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/Dundgobi_medeelel/FeatureServer/0",
+    urlFragment: "Dundgobi_medeelel",
+    label: "Багаж техник нөөц"
+  },
+  malchin: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/malchin_barshill/FeatureServer/0",
+    urlFragment: "malchin_barshill",
+    label: "Малчин өрх"
+  },
+  helipad: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/%D0%9D%D0%B8%D1%81%D0%B4%D1%8D%D0%B3%D1%82%D1%8D%D1%80%D1%8D%D0%B3%D0%B1%D1%83%D1%83%D1%85%D1%82%D0%B0%D0%BB%D0%B1%D0%B0%D0%B9/FeatureServer/0",
+    urlFragment: "Нисдэг",
+    label: "Нисдэг тэрэг талбай"
+  },
+  earthquake: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgobi_earthquake_final/FeatureServer/0",
+    urlFragment: "dundgobi_earthquake_final",
+    label: "Газар хөдлөлт эрсдэлтэй обьект"
+  },
+  survey: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/survey123_dbc86d003f2d44268d5ad91e352ffeda/FeatureServer/0",
+    urlFragment: "survey123_dbc86d003f2d44268d5ad91e352ffeda",
+    label: "Алба хаагчдын мэдээлэл (Survey)"
+  },
+
+  // === ХУВИЛБАР 1-4 ӨӨРЧЛӨГДӨХ 8 SCENARIO LAYER ===
+  // Бүгд 'type' талбартай — Өрнөл 1, Өрнөл 2 (газар хөдлөлт ЦБ-1 дээр л)
+
+  population: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgobi_earthquake_population/FeatureServer/0",
+    urlFragment: "dundgobi_earthquake_population",
+    label: "Өртсөн хүн ам (өрнөлөөр)"
+  },
+  livestock: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/livestock_lost/FeatureServer/3",
+    urlFragment: "livestock_lost",
+    label: "Өртсөн мал (өрнөлөөр)"
+  },
+  deaths: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgobi_earthquake_deceased/FeatureServer/0",
+    urlFragment: "dundgobi_earthquake_deceased",
+    label: "Нас барагсад (өрнөлөөр)"
+  },
+  disabled: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/disabled/FeatureServer/0",
+    urlFragment: "disabled",
+    label: "Хөгжлийн бэрхшээлтэй (өрнөлөөр)"
+  },
+  children: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/children/FeatureServer/0",
+    urlFragment: "children",
+    label: "Хүүхэд (өрнөлөөр)"
+  },
+  buildings: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgobi_earthquake_affected_buildings/FeatureServer/0",
+    urlFragment: "dundgobi_earthquake_affected_buildings",
+    label: "Өртсөн барилга (өрнөлөөр)"
+  },
+  elderly: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/elderly/FeatureServer/0",
+    urlFragment: "elderly",
+    label: "Өндөр настан (өрнөлөөр)"
+  },
+  injured: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgobi_earthquake_injured/FeatureServer/0",
+    urlFragment: "dundgobi_earthquake_injured",
+    label: "Бэртэгсэд (өрнөлөөр)"
+  },
+  // === ЦАГИЙН БАЙДАЛ 2 — ЗУД ===
+  zud: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/Dundgovi_Zud/FeatureServer/0",
+    urlFragment: "Dundgovi_Zud",
+    label: "Зудын мэдээлэл"
+  },
+  // === ЦАГИЙН БАЙДАЛ 3 — ШҮЛХИЙ ӨВЧИН ===
+  disease: {
+    url: "https://services-ap1.arcgis.com/MyOgsXxufxJraWYo/arcgis/rest/services/dundgovi_maliin_uwchin/FeatureServer/0",
+    urlFragment: "dundgovi_maliin_uwchin",
+    label: "Малын шүлхий өвчин"
+  }
+};
+
+const FEATURE_LAYER_URL = FEATURE_LAYERS.medeelel.url;
+
+const FIELD_INFO = `
+═══════════════════════════════════════════════════════════════════
+  ОНЦГОЙ БАЙДЛЫН ЕРӨНХИЙ ГАЗАР — ДУНДГОВЬ КОМАНДЫН ШТАБ
+  3 ЦАГИЙН БАЙДАЛ: ГАЗАР ХӨДЛӨЛТ · ЗУД · ШҮЛХИЙ
+═══════════════════════════════════════════════════════════════════
+
+Чи **Дундговь аймгийн Онцгой комиссын шуурхай штабын AI туслах** юм.
+3 төрлийн зохиомол гамшгийн дадлага явагдаж байна. Алба хаагчид Survey123-аар
+авч буй арга хэмжээгээ илгээдэг. Удирдлагуудын асуултанд бодит status-аас
+үнэлж, **зөв буруу** болохыг шинжилнэ.
+
+═══════════════════════════════════════════════════════════════════
+🚨 ЦАГИЙН БАЙДАЛ 1 — ГАЗАР ХӨДЛӨЛТ
+═══════════════════════════════════════════════════════════════════
+
+📍 Голомт: Сайнцагаан сум, Мандалговиос ЗӨ 9.5 км
+🌍 Магнитуд: 6.5
+📅 Хийсвэр: 2024.12.21, 15:46
+☁ Цаг агаар: -16°C өдөр, -22°C шөнө, салхи 4-9 м/с
+🔄 **2 өрнөл (development stage):**
+  • Өрнөл 1 — Анхны ачаалал, гамшгийн эхэн үе
+  • Өрнөл 2 — Дараагийн үе шат, нөхцөл байдал өөрчлөгдсөн
+
+**Хохирлын урьдчилсан үнэлгээ:**
+- Аймгийн төвийн барилгын 25-30% нурсан
+- 40 нас барсан, 72 сураггүй, 60 хүнд гэмтэл, 160 өрх орон сууцгүй
+- 35.6 кв төв дэд станц унаж, цахилгаан бүрэн тасарсан
+
+**8 голомт:**
+1. Өлзийт — Соёлын төв (20-30 хүүхэд нурангид)
+2. Сайнцагаан — Хүнсний 48-р, Барилгын 36-р, Номин дэлгүүр, Мандал 4-р сургууль
+3. Сайнцагаан Нэгдсэн эмнэлэг — нурах эрсдэлтэй
+4. Алтанговь зочид буудал — 3, 4-р давхарт гал, 4 гадаад жуулчин сураггүй
+5. Сайхан-Овоо — ЗДТГ, сургууль, эмнэлэг нурж, эм тариа дарагдсан
+6. Дэлгэрцогт — цэцэрлэг бага зэрэг нуралт
+7. Эрдэнэдалай — малын шүлхий өвчний голомт
+8. Сайнцагаан 7-р баг — гал түймэр, Эм Ойл шатахуун станц руу тархаж
+
+═══════════════════════════════════════════════════════════════════
+❄ ЦАГИЙН БАЙДАЛ 2 — ЗУД
+═══════════════════════════════════════════════════════════════════
+
+📅 Хийсвэр: 2026.12.22 09:30 — Үргэлжлэх 1 сар
+🌡 -20...-25°C шөнө, -10...-15°C өдөр
+❄ Цас 15-30 см, гуу жалгаар 50 см хүртэл хунгарласан
+🐑 Аймгийн 80% нутагт гантай, тэжээл бэлтгэлгүй
+
+**Гол асуудлууд:**
+- 5000+ толгой мал хорогдсон (хандлага өсөж байна)
+- 80 өрхөд 60 мянган толгой ОТОР мал бусад аймгаас ирсэн
+  (Говьсүмбэр, Дорноговь, Өмнөговь, Хэнтий)
+- Зам, даваа хаагдсан → эрүүл мэнд тусламж тасалдсан
+- Шатахуун, тэжээл хомс
+- Үхсэн малын мах борлуулагдаж байгаа мэдээ
+
+**Хүнд нөхцөлд орсон сумууд/багууд:**
+- Адаацаг сум — Ар-Урт баг (5 өрх сураггүй!)
+- Дэлгэрхангай сум — Тарагт, Толь баг
+- Өлзийт сум — Дэрт, Тагт баг
+- Дэрэн сум — Саруул баг
+- Эрдэнэдалай сум — Рашаант баг
+- Цагаандэлгэр сум — нийт нутаг дэвсгэр
+
+**Яаралтай тохиолдол:**
+- Адаацаг 5-р багт А. 35 настай жирэмсэн (37 долоо хоног)
+  эмэгтэйд яаралтай эмнэлгийн тусламж хэрэгтэй
+
+═══════════════════════════════════════════════════════════════════
+🦠 ЦАГИЙН БАЙДАЛ 3 — ШҮЛХИЙ ӨВЧИН
+═══════════════════════════════════════════════════════════════════
+
+📅 Хийсвэр: 2027.01.29 09:00 — 72 цаг
+🦠 Шүлхий өвчин батлагдсан (Улсын мал эмнэлэг лаборатори)
+
+**Тархсан сумууд (7 сум):**
+Баянжаргалан, Говь-Угтаал, Гурвансайхан, Дэлгэрцогт, Дэрэн, Өндөршил, Өлзийт
+
+**Хорио цээрийн бүсэд:**
+- 20+ малчин өрх (~70 хүн)
+- 4000+ толгой мэдрэмтгий мал
+- 20+ өндөр настан
+- 10+ хөгжлийн бэрхшээлтэй иргэн
+- 30+ хүүхэд
+- 50+ эрүүл мэндийн тусламж зайлшгүй шаардлагатай
+
+**Зөрчилтэй мэдэгдэлүүд:**
+- Хорио цээр зөрчиж мал худалдсан тохиолдол
+- Голомтоос мах, сүү, түүхий эд, арьс, шир Сайнцагаан хүнсний зах руу
+- 4 тээврийн хэрэгсэл гэрчилгээгүй тээвэрлэсэн
+- Мал эмнэлгийн нэгдсэн системд бүртгэгдээгүй
+
+**Үлдэгдэл шаардлага:**
+- Вакцин нөөц 50,000 тун — нэмж худалдан авах
+- Малын эмч, мэргэжилтэн дайчлах
+- Газрын хөрс хөлдсөн → том техник шаардлагатай (булшлахад)
+- Ариутгал, халдваргүйтгэлийн арга боловсронгуй болгох
+
+═══════════════════════════════════════════════════════════════════
+📊 LAYER БҮТЭЦ (15 layer)
+═══════════════════════════════════════════════════════════════════
+
+━━━ ӨРГӨН ХЭРЭГЛЭЭТЭЙ (3 цагийн байдалд бүгдэд) ━━━
+
+🚒 **medeelel** — Багаж техник нөөц (СУМААР)
+- sum_name (String) — "Сайнцагаан", "Гурвансайхан" г.м.
+- current_* (одоо байгаа): current_passenger_vehicle, current_cargo_truck,
+  current_bus, current_tanker_truck, current_special_vehicle,
+  current_wheel_loader, current_excavator, current_motor_grader,
+  current_trailer, current_iridium_satphone, current_hf_radio_station,
+  current_uhf_radio_station, current_starlink_terminal, current_water_pump,
+  current_generator, current_mongolian_ger, current_military_tent,
+  current_mobile_container
+- mobilize_* (дайчлах боломж): mobilize_rescue_personnel, mobilize_doctor_count,
+  mobilize_nurse_count, mobilize_electrician_count, mobilize_utility_engineer,
+  mobilize_it_specialist, mobilize_passenger_vehicle, mobilize_cargo_truck,
+  mobilize_bus, mobilize_tanker_truck, mobilize_signal_vehicle,
+  mobilize_wheel_loader, mobilize_excavator, mobilize_motor_grader,
+  mobilize_trailer, mobilize_iridium_satphone, mobilize_hf_radio_station,
+  mobilize_uhf_radio_station, mobilize_starlink_terminal, mobilize_water_pump,
+  mobilize_generator, mobilize_mongolian_ger, mobilize_military_tent,
+  mobilize_mobile_container
+- emerg_committee_personnel, professional_unit_personnel
+
+👨‍🌾 **malchin** — Малчин өрх
+- soum_name (String) — Анхаар: "soum_name" (sum_name биш!)
+- mal_niit (нийт мал), camel (Тэмээ), horse (Адуу),
+  cattle (Үхэр), sheep (Хонь), goat (Ямаа)
+
+🚁 **helipad** — Нисдэг тэрэг буух/хөөрөх талбай
+
+📝 **survey** — АЛБА ХААГЧДЫН SURVEY123 ХАРИУ ⭐
+- field_3 (Сум): "Сайнцагаан", "Адаацаг" г.м.
+- field_1 (Алба): ENUM 12 алба
+  • "Хэв журам сахиулах алба" (= Цагдаа)
+  • "Барилга, хот байгуулалтын алба"
+  • "Эрүүл мэндийн алба"
+  • "Сурталчилгааны алба"
+  • "Мэдээлэл, харилцаа холбооны алба"
+  • "Байгалийн болон цацраг, химийн аюулыг үнэлж, мэдээлэх алба"
+  • "Хүнс, хөдөө аж ахуйн алба"
+  • "Түлш, эрчим хүчээр хангах алба"
+  • "Зам, тээвэрийн алба"
+  • "Хүн ам, нийгмийн хамгааллын алба"
+  • "Мал эмнэлгийн алба"
+  • "Ус, дулаанаар хангах алба"
+- field_2 (Авсан арга хэмжээ): freeform текст
+- CreationDate, Creator, EditDate, Editor
+
+━━━ ЦАГИЙН БАЙДАЛ 1 — ГАЗАР ХӨДЛӨЛТ (8 layer) ━━━
+
+🏚 **earthquake** — Эрсдэлтэй обьект (СУМААР)
+- soum_name (Анхаар: sum_name биш soum_name!)
+- soum_population, buildings_in_soum, avg_population_per_building
+- earthquake_magnitude=6.5, distance_from_epicenter_km
+- soum_collapsed_buildings, soum_at_risk_buildings, soum_minor_damage_buildings
+
+🎯 **8 ӨРНӨЛИЙН LAYER** (population, livestock, deaths, disabled, children, buildings, elderly, injured):
+- soum_name (String)
+- **"type" талбар (alias "Өрнөл")** — String — ⭐ ҮНДСЭН ШҮҮЛТҮҮР ⭐
+  Утга: "Өрнөл 1" эсвэл "Өрнөл 2"
+  (Field name магадгүй "type" эсвэл "ornol" — туршиж шалга!)
+- Тоон талбар layer бүрд өөр нэртэй:
+  • population: population
+  • livestock: livestock_count/affected
+  • deaths: deaths/deceased
+  • disabled: disabled_count
+  • children: children_count
+  • buildings: buildings_affected
+  • elderly: elderly_count
+  • injured: injured_count
+
+━━━ ЦАГИЙН БАЙДАЛ 2 — ЗУД (1 layer) ━━━
+
+❄ **zud** — Зудын мэдээлэл
+- Талбарын яг нэр баталгаажаагүй
+- soum_name эсвэл соум талбар
+- Магадгүй: snow_depth, temperature_day, temperature_night,
+  livestock_lost, affected_households г.м.
+- АНХ ачаалахдаа outFields=* ашиглан field-уудыг шалгах
+
+━━━ ЦАГИЙН БАЙДАЛ 3 — ШҮЛХИЙ ӨВЧИН (1 layer) ━━━
+
+🦠 **disease** — Малын шүлхий өвчин
+- Талбарын яг нэр баталгаажаагүй
+- 7 сум: Баянжаргалан, Говь-Угтаал, Гурвансайхан, Дэлгэрцогт, Дэрэн, Өндөршил, Өлзийт
+- Магадгүй: soum_name, infected_animals, quarantine_status,
+  affected_households г.м.
+
+═══════════════════════════════════════════════════════════════════
+🏛 АЙМГИЙН ОНЦГОЙ КОМИССЫН ШУУРХАЙ ШТАБЫН БҮТЭЦ
+═══════════════════════════════════════════════════════════════════
+
+**Штабын дарга:** Аймгийн Засаг дарга
+**Орлогч:** Засаг даргын орлогч
+**Холбогч:** ОБГ-ын офицер 4
+**Аюулгүй байдлын хэсэг:** Хэв журам сахиулах алба + мэргэжлийн ангийн төлөөлөл
+
+━━━ 7 БАГ ━━━
+
+1️⃣ **Ажиллагааны баг** — ОБГ-ын дарга ахалдаг
+   БОУАӨ-ийн алба, Тагнуулын байгууллага, Эрчим хүчний алба,
+   Зам тээврийн алба, Эрүүл мэндийн алба, Газарзүйн мэдээллийн сан,
+   Хот байгуулалт, Хэв журам сахиулах алба, Мал эмнэлгийн газар,
+   Шүүх шинжилгээ, Шүүхийн шийдвэр
+
+2️⃣ **Төлөвлөлтийн баг** — Цэргийн штабын дарга ахалдаг
+   ХХААХҮ-ийн алба (Хүнс, ХАА), Газрын харилцаа барилга,
+   Нийгмийн бодлогын хэлтэс, Эрүүл мэндийн газар,
+   Ус, цаг уур, орчны шинжилгээний төв, Улсын бүртгэлийн хэлтэс,
+   Статистик, Стандарт хэмжил зүй
+
+3️⃣ **Нөөц, хангалтын баг** — Хөдөлмөр нийгмийн хамгааллын албаны дарга ахалдаг
+   Боловсролын газар, Биеийн тамир спорт, Гаалийн газар,
+   Соёл урлаг аялал жуулчлал, Орон нутгийн өмчийн газар,
+   Хүүхэд гэр бүлийн хөгжил хамгаалал, ОУ-ын хүмүүнлэгийн байгууллага,
+   Сайн дурын хэсэг
+
+4️⃣ **Санхүүгийн баг** — Санхүүгийн албаны дарга ахалдаг
+   Хууль эрх зүйн хэлтэс, Худалдан авах ажиллагаа, Архивын хэлтэс,
+   Эрүүл мэндийн даатгал, Татварын газар, Санхүүгийн хяналт, аудит
+
+5️⃣ **Захиргааны баг** — Засаг даргын Тамгын газрын дарга ахалдаг
+   (Санхүүгийн баг-тай ижил бүрэлдэхүүн ажиллана)
+
+6️⃣ **Хэвлэл мэдээллийн баг** — Сурталчилгааны албаны дарга ахалдаг
+   Олон нийтийн хэвлэл мэдээлэл (Төв-ТВ, Монцаме, Цахим мэдээллийн төв)
+
+7️⃣ **Холбоо зохион байгуулалтын баг** — Мэдээлэл, харилцаа холбооны албаны дарга
+   (Монголын цахилгаан холбоо ХХК, Unitel, Skitel, G-mobile, MobiCom)
+
+═══════════════════════════════════════════════════════════════════
+👥 12 БАЙГУУЛЛАГА БҮРИЙН ҮҮРЭГ (Survey field_1-тэй тохирно)
+═══════════════════════════════════════════════════════════════════
+
+| field_1 утга | Гамшгийн үед үүрэг |
+|---|---|
+| **Хэв журам сахиулах алба** (Цагдаа) | Хулгайн гэмт хэргээс хамгаалах, нүүлгэн шилжүүлэлт |
+| **Барилга, хот байгуулалтын алба** | Нурсан, эрсдэлтэй барилга үнэлэх |
+| **Эрүүл мэндийн алба** | Хээрийн эмнэлэг, тусламж, эм тариа |
+| **Сурталчилгааны алба** | Олон нийтэд мэдээлэл түгээх |
+| **Мэдээлэл, харилцаа холбооны алба** | Тасарсан холбоог сэргээх, Иридиум/Старлинк |
+| **Байгалийн ... аюулыг үнэлэх алба** | Цаг агаар, хүйтэн, цас, ариутгал |
+| **Хүнс, хөдөө аж ахуйн алба** | Орон гэргүй өрхөд хүнс, мал хамгаалах |
+| **Түлш, эрчим хүчээр хангах алба** | Дэд станц, цахилгаан сэргээх |
+| **Зам, тээвэрийн алба** | Зам цэвэрлэх, нүүлгэн шилжүүлэх тээвэр |
+| **Хүн ам, нийгмийн хамгааллын алба** | Орон гэргүй, эмзэг бүлэгт тусламж |
+| **Мал эмнэлгийн алба** | Шүлхий тусгаарлах, вакцин, мал хамгаалах |
+| **Ус, дулаанаар хангах алба** | Ус, дулааны шугам сэргээх |
+
+═══════════════════════════════════════════════════════════════════
+🎯 КОМАНДЫН ШТАБЫН ҮЙЛ АЖИЛЛАГАА
+═══════════════════════════════════════════════════════════════════
+
+Удирдлага асуухад дараах дарааллаар ажиллана:
+
+**A) ЦАГИЙН БАЙДАЛ ЯМАР ВЭ ГЭДГИЙГ ОЛОХ**
+- "Зудын талаар..." → zud + malchin + medeelel + survey
+- "Шүлхий..." → disease + malchin + medeelel + survey
+- "Газар хөдлөлт..." эсвэл сум онгойлгох: earthquake + 8 өрнөл layer + medeelel + survey
+- Хэрэв тодорхой биш бол асуу
+
+**B) СТАТУС ШАЛГАХ**
+- "Юу болж байна?" → survey (ORDER BY CreationDate DESC)
+- "Хэн ажиллаж байна?" → survey groupBy field_1
+- "Сум-д юу хийгдэв?" → survey WHERE field_3 LIKE '%сум_нэр%'
+
+**C) ХАРЬЦУУЛАЛТ — НӨӨЦ vs ДАЙЧИЛСАН**
+- medeelel.mobilize_* (нийт боломж) - survey.field_2 (бодит дайчилсан)
+  = "Үлдсэн нөөц"
+
+**D) 12 АЛБАНЫ ШАЛГАЛТ**
+- survey field_1 distinct values → 12-тай харьцуулна
+- Дутагдсаныг "🔴 АНХААР: __ алба хариу үйлдээгүй" гэж тэмдэглэ
+
+**E) 7 БАГИЙН ҮЙЛ АЖИЛЛАГАА**
+- Аль баг хариуцаж буй үүргээ хэрэгжүүлэв үү?
+- Жишээ: Ажиллагааны баг → ОБГ + БОУАӨ + Цагдаа + Эрүүл мэнд хамтран ажиллав уу?
+
+**F) ӨРНӨЛИЙН ХАРЬЦУУЛАЛТ (газар хөдлөлт)**
+- "Өрнөл 1 vs Өрнөл 2" → 2 query, харьцуулсан үр дүн
+- type='Өрнөл 1' AND type='Өрнөл 2' (эсвэл бодит утгаар туршиж шалгах)
+
+═══════════════════════════════════════════════════════════════════
+🗺 ⭐⭐⭐ ГАЗРЫН ЗУРГИЙН ШҮҮЛТ — ЗААВАЛ ХИЙХ ⭐⭐⭐
+═══════════════════════════════════════════════════════════════════
+
+**Маш чухал зарчим:** Хэрэглэгч **тодорхой сум, баг, газар** дурдсан тохиолдолд ҮРГЭЛЖ filter_map tool-ийг **АВТОМАТ дуудах**. "харуул" гэсэн үг байх хэрэггүй.
+
+✅ ШҮҮЛТ ЗААВАЛ ХИЙХ нөхцөл:
+
+1. **Хэрэглэгч сум, баг, газрын нэр дурдсан** үед:
+   - "Сайнцагаанд хэдэн хүн нас барах вэ?" → filter_map хийх (Сайнцагаан хайлт)
+   - "Эрдэнэдалай суманд юу болсон?" → filter_map хийх
+   - "Адаацаг Ар-Урт багт..." → filter_map хийх
+
+2. **Олон сум дурдсан** үед — OR operator-оор хамтад нь шүүх:
+   - "Сайнцагаан, Эрдэнэдалай, Адаацаг сумд..." 
+   - → filter_map: where="soum_name LIKE '%Сайнцагаан%' OR soum_name LIKE '%Эрдэнэдалай%' OR soum_name LIKE '%Адаацаг%'"
+
+3. **Цагийн байдалд хамаатай бүх сум дурдсан** үед:
+   - "Газар хөдлөлт болсон сумууд?" → 8 голомтын сумыг шүүх
+   - "Шүлхий тархсан сумууд?" → 7 сум (Баянжаргалан, Говь-Угтаал, Гурвансайхан, Дэлгэрцогт, Дэрэн, Өндөршил, Өлзийт)
+   - "Зудаар хүнд орсон сумууд?" → Адаацаг, Дэлгэрхангай, Өлзийт, Дэрэн, Эрдэнэдалай, Цагаандэлгэр
+
+4. **Top N сум** үед:
+   - "Хамгийн их өртсөн 5 сум" → query хийсний дараа гарсан 5 сумыг filter_map-аар шүүх
+
+✅ filter_map tool-ийг **АЛИВАА query-ийн дараа** дуудах ёстой. Жишээ:
+   1. query_arcgis-аар population layer-аас Сайнцагаан-ы тоо авах
+   2. → ШУУД filter_map-аар Сайнцагаан-ыг газрын зураг дээр шүүх
+   3. Дараа нь chat-д тайлбар өгөх
+
+🗺 **map_layer сонгох:**
+- Сум дурдсан үед → **map_layer="earthquake"** (polygon — сум-аар шүүх боломжтой)
+- Малчид дурдсан үед → **map_layer="malchin"**
+- Нисдэг тэрэг → **map_layer="helipad"**
+- Зуд тохиолдолд → map_layer="malchin" (малчдын байршил харах)
+- Шүлхий → map_layer="malchin" (өвчтэй сумын малчид)
+
+🗺 **Жишээ filter_map дуудлага:**
+
+Хэрэглэгч: "Сайнцагаан, Эрдэнэдалай, Адаацагт юу болсон вэ?"
+→ filter_map({
+   layer: "earthquake",
+   map_layer: "earthquake",
+   where: "soum_name LIKE '%Сайнцагаан%' OR soum_name LIKE '%Эрдэнэдалай%' OR soum_name LIKE '%Адаацаг%'",
+   description: "3 сум — Сайнцагаан, Эрдэнэдалай, Адаацаг"
+})
+
+Хэрэглэгч: "Хамгийн их өртсөн 5 сум"
+→ Эхлээд query_arcgis: ORDER BY soum_collapsed_buildings DESC LIMIT 5
+→ Гарсан үр дүн жишээ: [Сайнцагаан, Сайхан-Овоо, Өлзийт, Эрдэнэдалай, Дэлгэрцогт]
+→ Дараа нь filter_map: 
+   where: "soum_name LIKE '%Сайнцагаан%' OR soum_name LIKE '%Сайхан-Овоо%' OR ..."
+
+❌ ШҮҮЛТ ХИЙХГҮЙ нөхцөл:
+- Сум нэр дурдаагүй ерөнхий асуулт ("12 байгууллагаас аль нь хариу үйлдээгүй?")
+- Шүүх боломжгүй мэдээлэл ("Хэдэн вакцин нөөц байна?")
+
+═══════════════════════════════════════════════════════════════════
+⚠ ШҮҮЛТИЙН ДҮРЭМ — LAYER ТУС БҮРД ӨӨР FIELD
+═══════════════════════════════════════════════════════════════════
+
+| Layer | Сум талбар | Жишээ |
+|---|---|---|
+| medeelel | sum_name | "sum_name LIKE '%Сайнцагаан%'" |
+| malchin | soum_name | "soum_name LIKE '%Сайнцагаан%'" |
+| earthquake | soum_name | "soum_name LIKE '%Сайнцагаан%'" |
+| population/livestock/deaths/etc. | soum_name | "soum_name LIKE '%Сайнцагаан%' AND type='Өрнөл 1'" |
+| survey | field_3 | "field_3='Сайнцагаан'" |
+| zud | unknown | outFields=* туршиж ол |
+| disease | unknown | outFields=* туршиж ол |
+| helipad | unknown | outFields=* туршиж ол |
+
+**ҮРГЭЛЖ LIKE АШИГЛАХ:** "sum_name LIKE '%Сайнцагаан%'"
+**ЯГ ТАХИР ИЛҮҮДЭХ:** sum_name='Сайнцагаан' — зайнаас болж алдах магадлалтай
+
+═══════════════════════════════════════════════════════════════════
+📋 ХАРИУЛТЫН БҮТЭЦ
+═══════════════════════════════════════════════════════════════════
+
+Штабын тайлан хэлбэр (5-10 өгүүлбэр):
+
+📊 **[Гарчиг]**
+[Тэргүүн тоо bold] - тогтвортой баримт.
+
+**Тайлбар:**
+- Цэг 1
+- Цэг 2
+
+**Үнэлгээ:** ✅ хангалттай / ⚠ анхаарах / 🔴 АНХААР!
+
+**Дараагийн алхам:** [тодорхой зөвлөмж]
+
+═══════════════════════════════════════════════════════════════════
+🏘 ДУНДГОВЬ АЙМГИЙН СУМУУД (17)
+═══════════════════════════════════════════════════════════════════
+
+Сайнцагаан (төв), Гурвансайхан, Адаацаг, Луус, Хулд, Сайхан-Овоо,
+Эрдэнэдалай, Дэрэн, Цагаандэлгэр, Дэлгэрцогт, Говь-Угтаал,
+Цагаансүм, Баянжаргалан, Өндөршил, Дэлгэрхангай, Бачит-Овоо, Өлзийт
+`;
+
+// SYSTEM_PROMPT нь FIELD_INFO-той ижил — backwards-compat
+const SYSTEM_PROMPT = FIELD_INFO;
+
+const TOOLS = [
+  {
+    name: "query_arcgis",
+    description: "ArcGIS feature service-ээс өгөгдөл татах. Тоолох, шүүх, групплэх боломжтой. layer параметрээр аль layer-аас (dundgobi, malchin, helipad) уншихыг сонго.",
+    input_schema: {
+      type: "object",
+      properties: {
+        layer: { type: "string", enum: ["medeelel", "malchin", "helipad", "earthquake", "survey", "population", "livestock", "deaths", "disabled", "children", "buildings", "elderly", "injured", "zud", "disease"], description: "Layer: medeelel=Багаж техник нөөц, malchin=Малчин өрх, helipad=Нисдэг тэрэг буух газар, earthquake=Барилга эрсдэл (газар хөдлөлт), survey=Алба хаагч хариу, population=Өртсөн нийт хүн ам (газар хөдлөлт өрнөлөөр), livestock=Өртсөн мал (газар хөдлөлт өрнөлөөр), deaths=Нас барагсад (газар хөдлөлт өрнөлөөр), disabled=Хөгжлийн бэрхшээлтэй (өрнөлөөр), children=Хүүхэд (өрнөлөөр), buildings=Өртсөн барилга (өрнөлөөр), elderly=Өндөр настан (өрнөлөөр), injured=Бэртэгсэд (өрнөлөөр), zud=Зудын мэдээлэл (Цагийн байдал 2), disease=Малын шүлхий өвчин (Цагийн байдал 3)" },
+        tier: { type: "integer", enum: [1, 2, 3] },
+        where: { type: "string", description: "SQL where. Жишээ: \"sum='Сайнцагаан'\" эсвэл \"1=1\"" },
+        outFields: { type: "string" },
+        groupBy: { type: "string" },
+        statistics: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              statisticType: { type: "string", enum: ["count","sum","avg","min","max"] },
+              onStatisticField: { type: "string" },
+              outStatisticFieldName: { type: "string" }
+            }
+          }
+        },
+        orderByFields: { type: "string" },
+        resultRecordCount: { type: "integer" }
+      },
+      required: ["layer", "tier", "where"]
+    }
+  },
+  {
+    name: "render_chart",
+    description: "Үр дүнг график болгон харуулах",
+    input_schema: {
+      type: "object",
+      properties: {
+        chartType: { type: "string", enum: ["bar","pie","line"] },
+        title: { type: "string" },
+        labels: { type: "array", items: { type: "string" } },
+        values: { type: "array", items: { type: "number" } },
+        valueLabel: { type: "string" }
+      },
+      required: ["chartType","title","labels","values"]
+    }
+  },
+  {
+    name: "filter_map",
+    description: "Газрын зураг дээр сонгосон layer-д шүүлтүүр тавих. Хэрэглэгч 'харуул' гэвэл ашигла. ⚠️ ЧУХАЛ: Хохирлын layer-ууд (population, livestock, deaths, disabled, children, buildings, elderly, injured) болон зуд/шүлхий нь зарим тохиолдолд **table** учир газрын зураг дээр шүүгдэхгүй. Тэр үед `map_layer` параметрт **'earthquake'** (polygon, сум-аар шүүх боломжтой) эсвэл малчдын тохиолдолд **'malchin'** оруулна. Эсвэл geometric layer-уудыг шууд (medeelel, malchin, helipad, earthquake, survey) ашиглавал layer = map_layer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        layer: { type: "string", enum: ["medeelel", "malchin", "helipad", "earthquake", "survey", "population", "livestock", "deaths", "disabled", "children", "buildings", "elderly", "injured", "zud", "disease"], description: "Эх өгөгдлийн layer (data source)" },
+        map_layer: { type: "string", enum: ["medeelel", "malchin", "helipad", "earthquake", "survey", "zud", "disease"], description: "Газрын зураг дээр БОДИТООР шүүгдэх layer (геометртэй). Хэрэв data layer table бол энд 'earthquake'-г (сумаар шүүх боломжтой) эсвэл өөр geometric layer-ыг сонго. Хоосон үлдээвэл data layer-ыг ашиглахыг оролдох." },
+        where: { type: "string", description: "SQL where clause map_layer-д тохирсон. Жишээ сум-аар: \"soum_name LIKE '%Сайнцагаан%' OR soum_name LIKE '%Эрдэнэдалай%'\"" },
+        description: { type: "string", description: "Монголоор товч тайлбарла. Жишээ: 'Газар хөдлөлт өртсөн 5 сум'" }
+      },
+      required: ["layer", "where", "description"]
+    }
+  },
+  {
+    name: "navigate_map",
+    description: "Газрын зураг дээр тодорхой газар руу зум хийх. Хэрэглэгч 'oч', 'зум', 'хүртэл' гэсэн үед ашигла.",
+    input_schema: {
+      type: "object",
+      properties: {
+        place: { type: "string", description: "Газрын нэр (англиар найдвартай). Жишээ: 'Ulaanbaatar, Mongolia', 'Selenge, Mongolia'" },
+        description: { type: "string", description: "Юу хайж байгааг Монголоор. Жишээ: 'Улаанбаатар хот'" }
+      },
+      required: ["place", "description"]
+    }
+  },
+  {
+    name: "clear_filter",
+    description: "Газрын зургаас шүүлтүүрийг арилгах. Хэрэглэгч 'арилга', 'болих', 'бүгдийг буцаах' гэвэл ашигла.",
+    input_schema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "refuse_operational",
+    description: "Үйл ажиллагааны шийдвэр (Түвшин 4) асуултыг татгалзах",
+    input_schema: {
+      type: "object",
+      properties: {
+        reason: { type: "string" }
+      },
+      required: ["reason"]
+    }
+  }
+];
+
+let anthropicKey = "";
+let geminiKey = "";
+let currentModel = "claude-haiku-4-5-20251001"; // default Claude
+let conversationHistory = [];
+let mapView = null;
+// Multi-layer state — each key matches FEATURE_LAYERS keys
+let featureLayers = { medeelel: null, malchin: null, helipad: null, earthquake: null, survey: null, population: null, livestock: null, deaths: null, disabled: null, children: null, buildings: null, elderly: null, injured: null, zud: null, disease: null };
+let originalDefExpressions = { medeelel: "", malchin: "", helipad: "", earthquake: "", survey: "", population: "", livestock: "", deaths: "", disabled: "", children: "", buildings: "", elderly: "", injured: "", zud: "", disease: "" };
+// Backwards-compat (some functions still reference these)
+let featureLayer = null;
+let originalDefExpression = "";
+
+// Cost estimates per question (rough) — Claude only
+const COST_PER_QUESTION = {
+  "claude-haiku-4-5-20251001": "~$0.001-0.005/asuult",
+  "claude-sonnet-4-5": "~$0.005-0.02/asuult"
+};
+
+// Load saved keys
+const savedAnthropic = localStorage.getItem("anthropic_api_key");
+const savedModel = localStorage.getItem("selected_model");
+if (savedAnthropic) anthropicKey = savedAnthropic;
+// Only use saved model if it's still in our current list (Claude only now)
+if (savedModel && COST_PER_QUESTION[savedModel]) {
+  currentModel = savedModel;
+} else {
+  // Saved model deprecated — reset to default
+  localStorage.removeItem("selected_model");
+}
+
+// Show dialog if NO key saved; otherwise hide
+const hasAnyKey = !!anthropicKey;
+document.getElementById("keyDialog").style.display = hasAnyKey ? "none" : "flex";
+
+// Pre-fill the input if key exists (so user can see / edit)
+if (anthropicKey) document.getElementById("apiKeyInput").value = anthropicKey;
+
+// Set model selector to saved choice
+document.getElementById("modelSelect").value = currentModel;
+document.getElementById("costEstimate").textContent = COST_PER_QUESTION[currentModel];
+
+function changeModel() {
+  currentModel = document.getElementById("modelSelect").value;
+  localStorage.setItem("selected_model", currentModel);
+  document.getElementById("costEstimate").textContent = COST_PER_QUESTION[currentModel];
+
+  if (!anthropicKey) {
+    addAssistantMessage("⚠️ Anthropic API key оруулаагүй байна. Дээд талын 🔑 товчоо дарж нэмнэ үү.", null);
+  } else {
+    const labels = {
+      "claude-haiku-4-5-20251001": "⚡ Claude Haiku 4.5",
+      "claude-sonnet-4-5": "💎 Claude Sonnet 4.5"
+    };
+    addAssistantMessage(`Загвар сонгогдлоо: **${labels[currentModel]}** · ${COST_PER_QUESTION[currentModel]}`, null);
+  }
+}
+
+// Robust layer detection — tries every way until layer is found
+const mapEl = document.getElementById("map");
+
+async function findFeatureLayer() {
+  let attempts = 0;
+  while (attempts < 60) {
+    try {
+      let view = null;
+      if (mapEl.view) view = mapEl.view;
+      else if (mapEl.arcgisView) view = mapEl.arcgisView;
+      else if (mapEl.viewReady) view = mapEl.view;
+
+      if (view && view.ready && view.map) {
+        mapView = view;
+        console.log("✅ MapView found via polling, attempt", attempts);
+
+        // 🔍 Mouse-wheel zoom on map — ENABLED (user wants this)
+        // Page has overflow:hidden so no whole-page scroll competing
+        // The chat panel scrolls inside its own container
+        try {
+          if (view.navigation) {
+            view.navigation.mouseWheelZoomEnabled = true;
+          }
+          console.log("✅ Mouse-wheel zoom ENABLED on map");
+        } catch (e) {
+          console.warn("Could not configure mouse-wheel zoom:", e.message);
+        }
+
+        // List all layers
+        console.log("Layers in webmap:");
+        view.map.allLayers.forEach(l => {
+          console.log("  -", l.title, "|", l.type, "|", l.url || "(no url)");
+        });
+
+        // Match layers by URL fragment
+        view.map.allLayers.forEach(l => {
+          if (!l.url || l.type !== "feature") return;
+          for (const key of Object.keys(FEATURE_LAYERS)) {
+            if (featureLayers[key]) continue; // already found
+            const cfg = FEATURE_LAYERS[key];
+            if (l.url.includes(cfg.urlFragment) || l.url === cfg.url) {
+              featureLayers[key] = l;
+              originalDefExpressions[key] = l.definitionExpression || "";
+              console.log(`✅ ${cfg.label} layer found:`, l.title);
+            }
+          }
+        });
+
+        // Fallback — load any missing layers externally
+        const [FeatureLayer] = await new Promise(resolve => {
+          require(["esri/layers/FeatureLayer"], (FL) => resolve([FL]));
+        });
+
+        for (const key of Object.keys(FEATURE_LAYERS)) {
+          if (!featureLayers[key]) {
+            const cfg = FEATURE_LAYERS[key];
+            console.log(`⚠️ ${cfg.label} not in webmap, loading externally...`);
+            try {
+              const fl = new FeatureLayer({
+                url: cfg.url,
+                outFields: ["*"],
+                title: cfg.label
+              });
+              view.map.add(fl);
+              await fl.when();
+              featureLayers[key] = fl;
+              originalDefExpressions[key] = fl.definitionExpression || "";
+              console.log(`✅ ${cfg.label} loaded externally`);
+            } catch (e) {
+              console.error(`❌ ${cfg.label} load failed:`, e.message);
+            }
+          }
+        }
+
+        // Set default featureLayer (back-compat) to medeelel
+        featureLayer = featureLayers.medeelel || featureLayers.malchin || featureLayers.helipad;
+        originalDefExpression = featureLayer ? (featureLayer.definitionExpression || "") : "";
+
+        const found = Object.keys(featureLayers).filter(k => featureLayers[k]).length;
+        const total = Object.keys(FEATURE_LAYERS).length;
+        console.log(`🎯 ${found}/${total} layers ready.`);
+        return;
+      }
+    } catch (e) {
+      console.log("Attempt", attempts, "error:", e.message);
+    }
+    attempts++;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.error("❌ Could not find feature layers after 30 seconds");
+}
+
+// Also listen for the event in case it fires
+mapEl.addEventListener("arcgisViewReadyChange", (e) => {
+  console.log("arcgisViewReadyChange fired:", e.target.viewReady);
+});
+
+// Start polling immediately
+findFeatureLayer();
+
+async function applyMapFilter(layerKey, where, description) {
+  // Default to medeelel if no layer specified (back-compat)
+  if (typeof layerKey === "string" && !FEATURE_LAYERS[layerKey] && where === undefined) {
+    description = where;
+    where = layerKey;
+    layerKey = "medeelel";
+  }
+
+  console.log("🔍 applyMapFilter called:", { layerKey, where, description });
+
+  const layer = featureLayers[layerKey];
+  if (!layer) {
+    console.error(`❌ Layer "${layerKey}" not loaded. Available:`, Object.keys(featureLayers).filter(k => featureLayers[k]));
+    return { ok: false, error: `${layerKey} layer бэлэн биш байна` };
+  }
+
+  console.log(`✅ Layer "${layerKey}" found:`, layer.title, "| type:", layer.type, "| visible:", layer.visible);
+
+  try {
+    const origExpr = originalDefExpressions[layerKey] || "";
+    const fullWhere = origExpr ? `(${origExpr}) AND (${where})` : where;
+
+    // CRITICAL: Force layer to be visible (sometimes layers are hidden in webmap)
+    layer.visible = true;
+    layer.opacity = 1;
+
+    // Apply filter
+    layer.definitionExpression = fullWhere;
+    console.log(`📝 Set definitionExpression: ${fullWhere}`);
+
+    // Show banner
+    document.getElementById("filterText").textContent = description;
+    document.getElementById("filterBanner").classList.add("show");
+
+    // Wait for layer view to refresh
+    await new Promise(r => setTimeout(r, 300));
+
+    // Zoom to filtered extent
+    try {
+      const extResult = await layer.queryExtent({ where: where });
+      console.log("📍 Extent result:", extResult);
+      if (extResult && extResult.extent && extResult.count > 0) {
+        await mapView.goTo(extResult.extent.expand(1.5), { duration: 800 });
+        console.log(`✅ Zoomed to extent. Feature count: ${extResult.count}`);
+      } else {
+        console.warn("⚠️ No features matched the filter — check field name and value");
+      }
+    } catch (e) {
+      console.warn("⚠️ Zoom to extent failed:", e.message, "— layer may be a table without geometry");
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error("❌ Filter error:", err);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function navigateToPlace(place) {
+  if (!mapView) {
+    return { ok: false, error: "Газрын зураг бэлэн биш байна" };
+  }
+  try {
+    const url = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&singleLine=${encodeURIComponent(place)}&maxLocations=1`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.candidates && data.candidates.length > 0) {
+      const c = data.candidates[0];
+      if (c.extent) {
+        await mapView.goTo({
+          target: [c.location.x, c.location.y],
+          extent: c.extent
+        }, { duration: 800 });
+      } else {
+        await mapView.goTo({
+          target: [c.location.x, c.location.y],
+          zoom: 10
+        }, { duration: 800 });
+      }
+      return { ok: true, address: c.address };
+    }
+    return { ok: false, error: "Газар олдсонгүй" };
+  } catch (err) {
+    console.error("Navigation error:", err);
+    return { ok: false, error: err.message };
+  }
+}
+
+function clearMapFilter() {
+  for (const key of Object.keys(featureLayers)) {
+    if (featureLayers[key]) {
+      featureLayers[key].definitionExpression = originalDefExpressions[key] || "";
+    }
+  }
+  document.getElementById("filterBanner").classList.remove("show");
+}
+
+function saveKey() {
+  const aKey = document.getElementById("apiKeyInput").value.trim();
+
+  if (!aKey) {
+    alert("Anthropic API key оруулна уу.");
+    return;
+  }
+
+  if (!aKey.startsWith("sk-ant-")) {
+    alert("Anthropic key буруу. 'sk-ant-' гэж эхлэх ёстой.");
+    return;
+  }
+
+  anthropicKey = aKey;
+  localStorage.setItem("anthropic_api_key", aKey);
+
+  document.getElementById("keyDialog").style.display = "none";
+
+  // Default to Haiku
+  document.getElementById("modelSelect").value = "claude-haiku-4-5-20251001";
+  changeModel();
+}
+
+function toggleGuide() {
+  document.getElementById("tierGuide").classList.toggle("show");
+}
+
+function resetKeys() {
+  if (confirm("API key-ийг арилгах уу? Шинэ key оруулах dialog нээгдэнэ.")) {
+    localStorage.removeItem("anthropic_api_key");
+    localStorage.removeItem("gemini_api_key"); // Cleanup old too
+    anthropicKey = "";
+    geminiKey = "";
+    document.getElementById("apiKeyInput").value = "";
+    document.getElementById("keyDialog").style.display = "flex";
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+}
+
+function md(text) {
+  if (!text) return "";
+  let h = escapeHtml(text);
+  h = h.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+  h = h.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+  h = h.replace(/^# (.+)$/gm, "<h2>$1</h2>");
+  h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  h = h.replace(/(?:^|\n)((?:[-*] .+\n?)+)/g, (m, list) => {
+    const items = list.trim().split("\n").map(l => "<li>" + l.replace(/^[-*] /, "") + "</li>").join("");
+    return "<ul>" + items + "</ul>";
+  });
+  h = h.replace(/\n\n/g, "<br><br>");
+  h = h.replace(/\n/g, "<br>");
+  return h;
+}
+
+function addUserMessage(text) {
+  const m = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = "msg user";
+  div.textContent = text;
+  m.appendChild(div);
+  m.scrollTop = m.scrollHeight;
+}
+
+function addAssistantMessage(text, tier, mapAction) {
+  const m = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = "msg assistant";
+
+  if (tier) {
+    const badge = document.createElement("div");
+    badge.className = "tier-badge tier-" + tier;
+    const labels = {1:"🟢 1-Р ТҮВШИН",2:"🟡 2-Р ТҮВШИН",3:"🟠 3-Р ТҮВШИН",4:"🔴 4-Р ТҮВШИН"};
+    badge.textContent = labels[tier];
+    div.appendChild(badge);
+  }
+
+  const txt = document.createElement("div");
+  txt.innerHTML = md(text);
+  div.appendChild(txt);
+
+  if (mapAction) {
+    const ma = document.createElement("div");
+    ma.className = "map-action";
+    ma.textContent = "🗺️ " + mapAction;
+    div.appendChild(ma);
+  }
+
+  if (tier === 3) {
+    const d = document.createElement("div");
+    d.className = "disclaimer tier-3";
+    d.textContent = "⚠️ Энэ нь өгөгдлийн ажиглалт. Бодит шийдвэр гаргахын өмнө мэргэжилтэнтэй зөвлөлдөөрэй.";
+    div.appendChild(d);
+  } else if (tier === 4) {
+    const d = document.createElement("div");
+    d.className = "disclaimer tier-4";
+    d.textContent = "🚫 Үйл ажиллагааны шийдвэр — командлагч/мэргэжилтэн шийдэх ёстой.";
+    div.appendChild(d);
+  }
+
+  m.appendChild(div);
+  m.scrollTop = m.scrollHeight;
+  return div;
+}
+
+function addChart(chartType, title, labels, values, valueLabel) {
+  const m = document.getElementById("messages");
+  const wrap = document.createElement("div");
+  wrap.className = "msg assistant";
+
+  const titleEl = document.createElement("strong");
+  titleEl.textContent = "📊 " + title;
+  wrap.appendChild(titleEl);
+
+  const chartWrap = document.createElement("div");
+  chartWrap.className = "chart-wrap";
+  const canvas = document.createElement("canvas");
+  chartWrap.appendChild(canvas);
+  wrap.appendChild(chartWrap);
+  m.appendChild(wrap);
+  m.scrollTop = m.scrollHeight;
+
+  const colors = [
+    "#c8102e","#dc2626","#ea580c","#d97706","#ca8a04",
+    "#65a30d","#16a34a","#0d9488","#0284c7","#2563eb",
+    "#7c3aed","#c026d3","#db2777","#e11d48","#9f1239"
+  ];
+
+  new Chart(canvas, {
+    type: chartType,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: valueLabel || "Утга",
+        data: values,
+        backgroundColor: chartType === "line" ? "rgba(200,16,46,0.15)" : labels.map((_,i) => colors[i % colors.length]),
+        borderColor: chartType === "line" ? "#c8102e" : "#fff",
+        borderWidth: chartType === "line" ? 2 : 1,
+        fill: chartType === "line"
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: chartType === "pie", position: "right", labels: { font: { size: 11 } } }
+      },
+      scales: chartType === "pie" ? {} : {
+        y: { beginAtZero: true, ticks: { font: {size: 10} } },
+        x: { ticks: { font: {size: 10}, maxRotation: 45, minRotation: 0 } }
+      }
+    }
+  });
+}
+
+function showTyping() {
+  const m = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = "typing";
+  div.id = "typingIndicator";
+  div.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span> Бодож байна';
+  m.appendChild(div);
+  m.scrollTop = m.scrollHeight;
+}
+
+function hideTyping() {
+  const t = document.getElementById("typingIndicator");
+  if (t) t.remove();
+}
+
+function onKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+}
+
+function sendSuggestion(el) {
+  document.getElementById("input").value = el.textContent;
+  send();
+}
+
+async function queryFeatureLayer(params) {
+  // Pick the right layer URL based on the 'layer' param
+  const layerKey = params.layer || "medeelel"; // default fallback
+  const cfg = FEATURE_LAYERS[layerKey];
+  if (!cfg) {
+    return { error: { message: `Unknown layer: ${layerKey}` } };
+  }
+  const url = cfg.url + "/query";
+
+  const formData = new URLSearchParams();
+  formData.append("f", "json");
+  formData.append("where", params.where || "1=1");
+
+  if (params.statistics && params.statistics.length > 0) {
+    formData.append("outStatistics", JSON.stringify(params.statistics));
+    formData.append("returnGeometry", "false");
+    if (params.groupBy) formData.append("groupByFieldsForStatistics", params.groupBy);
+  } else {
+    formData.append("outFields", params.outFields || "*");
+    formData.append("returnGeometry", "false");
+    formData.append("resultRecordCount", params.resultRecordCount || 50);
+  }
+  if (params.orderByFields) formData.append("orderByFields", params.orderByFields);
+
+  try {
+    const resp = await fetch(url, { method: "POST", body: formData });
+    const data = await resp.json();
+    return data;
+  } catch (e) {
+    return { error: { message: e.message } };
+  }
+}
+
+// Universal LLM caller — works with Claude (Anthropic) and Gemini
+async function callLLM(messages) {
+  if (currentModel.startsWith("claude")) {
+    return callAnthropic(messages);
+  } else if (currentModel.startsWith("gemini")) {
+    return callGemini(messages);
+  } else {
+    throw new Error("Unknown model: " + currentModel);
+  }
+}
+
+async function callAnthropic(messages) {
+  if (!anthropicKey) throw new Error("Anthropic API key байхгүй. Дугуй товч дарж нэмнэ үү.");
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": anthropicKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: currentModel,
+      max_tokens: 1500,
+      system: [{
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" }  // prompt caching — 90% cheaper on repeat
+      }],
+      tools: TOOLS,
+      messages: messages
+    })
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error.message || "Anthropic API алдаа");
+  return data;
+}
+
+// Convert Anthropic-style messages to Gemini contents
+function messagesToGeminiContents(messages) {
+  const contents = [];
+  for (const msg of messages) {
+    if (typeof msg.content === "string") {
+      contents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }]
+      });
+    } else if (Array.isArray(msg.content)) {
+      // Could be tool_use, tool_result, or text blocks
+      const parts = [];
+      for (const b of msg.content) {
+        if (b.type === "text") {
+          parts.push({ text: b.text });
+        } else if (b.type === "tool_use") {
+          parts.push({
+            functionCall: { name: b.name, args: b.input }
+          });
+        } else if (b.type === "tool_result") {
+          parts.push({
+            functionResponse: {
+              name: "result",
+              response: { content: typeof b.content === "string" ? b.content : JSON.stringify(b.content) }
+            }
+          });
+        }
+      }
+      contents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: parts
+      });
+    }
+  }
+  return contents;
+}
+
+// Convert Anthropic tool definitions to Gemini format
+// Convert JSON schema to Gemini-compatible schema
+// - Integer enums must be converted to string enums (or removed)
+// - Some fields not supported (additionalProperties, oneOf, etc.) — strip them
+function toGeminiSchema(schema) {
+  if (!schema || typeof schema !== "object") return schema;
+
+  const out = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "additionalProperties" || key === "$schema") continue;
+
+    if (key === "enum") {
+      // Gemini only supports string enums — convert numeric to string and require string type
+      out.enum = value.map(v => String(v));
+      // If parent type was integer, change to string
+      if (out.type === "integer" || out.type === "number") {
+        out.type = "string";
+      }
+    } else if (key === "type") {
+      out.type = value;
+    } else if (key === "items") {
+      out.items = toGeminiSchema(value);
+    } else if (key === "properties") {
+      out.properties = {};
+      for (const [pk, pv] of Object.entries(value)) {
+        out.properties[pk] = toGeminiSchema(pv);
+      }
+    } else {
+      out[key] = value;
+    }
+  }
+
+  // After processing, if we have an integer enum, retype to string
+  if (out.enum && (out.type === "integer" || out.type === "number")) {
+    out.type = "string";
+  }
+
+  return out;
+}
+
+function toolsToGeminiFormat() {
+  return [{
+    functionDeclarations: TOOLS.map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: toGeminiSchema(t.input_schema)
+    }))
+  }];
+}
+
+async function callGemini(messages) {
+  if (!geminiKey) throw new Error("Gemini API key байхгүй. Дугуй товч дарж нэмнэ үү.");
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${geminiKey}`;
+  const contents = messagesToGeminiContents(messages);
+  const tools = toolsToGeminiFormat();
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: contents,
+      tools: tools,
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
+    })
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error.message || "Gemini API алдаа");
+
+  // Convert Gemini response to Anthropic-like shape
+  const candidate = data.candidates?.[0];
+  if (!candidate) throw new Error("Gemini хариу хоосон");
+
+  const content = [];
+  let stopReason = "end_turn";
+  for (const part of (candidate.content?.parts || [])) {
+    if (part.text) {
+      content.push({ type: "text", text: part.text });
+    } else if (part.functionCall) {
+      // Gemini returns tier as string ("1") — convert back to int for our handlers
+      const args = part.functionCall.args || {};
+      if (args.tier && typeof args.tier === "string") {
+        args.tier = parseInt(args.tier, 10);
+      }
+      content.push({
+        type: "tool_use",
+        id: "gemini_" + Math.random().toString(36).slice(2, 10),
+        name: part.functionCall.name,
+        input: args
+      });
+      stopReason = "tool_use";
+    }
+  }
+
+  return { content, stop_reason: stopReason };
+}
+
+async function send() {
+  const input = document.getElementById("input");
+  const text = input.value.trim();
+  if (!text) return;
+
+  // Check that user has Anthropic key
+  if (!anthropicKey) {
+    document.getElementById("keyDialog").style.display = "flex";
+    return;
+  }
+
+  input.value = "";
+  document.getElementById("send").disabled = true;
+  addUserMessage(text);
+  showTyping();
+
+  // Trim history to keep costs low — keep last 12 messages
+  if (conversationHistory.length > 12) {
+    conversationHistory = conversationHistory.slice(-12);
+  }
+
+  conversationHistory.push({ role: "user", content: text });
+
+  try {
+    let detectedTier = null;
+    let mapActionDesc = null;
+    let safetyCounter = 0;
+
+    while (safetyCounter++ < 6) {
+      const response = await callLLM(conversationHistory);
+      conversationHistory.push({ role: "assistant", content: response.content });
+
+      if (response.stop_reason === "tool_use") {
+        const toolUses = response.content.filter(b => b.type === "tool_use");
+        const toolResults = [];
+
+        for (const tu of toolUses) {
+          if (tu.name === "query_arcgis") {
+            if (tu.input.tier) detectedTier = tu.input.tier;
+            const result = await queryFeatureLayer(tu.input);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: JSON.stringify(result).slice(0, 8000)
+            });
+          } else if (tu.name === "render_chart") {
+            hideTyping();
+            addChart(tu.input.chartType, tu.input.title, tu.input.labels, tu.input.values, tu.input.valueLabel);
+            showTyping();
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: "Chart rendered."
+            });
+          } else if (tu.name === "filter_map") {
+            // Хохирлын table-ууд (population, deaths, etc.) газрын зурагт шүүгдэхгүй
+            // тиймээс map_layer параметр (бодит газрын зургийн layer) ашиглах
+            const TABLE_LAYERS = ["population", "livestock", "deaths", "disabled", "children", "buildings", "elderly", "injured"];
+            const dataLayer = tu.input.layer || "medeelel";
+            // Хэрэв map_layer заасан бол түүнийг ашиглах. Үгүй бол data layer table эсвэл биш гэдгээс хамаарна
+            let mapLayerKey = tu.input.map_layer;
+            if (!mapLayerKey) {
+              mapLayerKey = TABLE_LAYERS.includes(dataLayer) ? "earthquake" : dataLayer;
+            }
+            const r = await applyMapFilter(mapLayerKey, tu.input.where, tu.input.description);
+            const dataLabel = FEATURE_LAYERS[dataLayer] ? FEATURE_LAYERS[dataLayer].label : dataLayer;
+            const mapLabel = FEATURE_LAYERS[mapLayerKey] ? FEATURE_LAYERS[mapLayerKey].label : mapLayerKey;
+            mapActionDesc = `[${dataLabel} → ${mapLabel}] шүүлээ: ` + tu.input.description;
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: r.ok 
+                ? `Filter applied successfully. Map layer "${mapLabel}" highlighted on the map using filter from "${dataLabel}".`
+                : `Filter failed on ${mapLabel}: ${r.error}. Try a different map_layer (earthquake for sum-level, malchin for herders).`
+            });
+          } else if (tu.name === "navigate_map") {
+            const r = await navigateToPlace(tu.input.place);
+            if (r.ok) {
+              mapActionDesc = "Газрын зураг очлоо: " + tu.input.description;
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: "Navigated to " + r.address
+              });
+            } else {
+              mapActionDesc = "Очих амжилтгүй: " + r.error;
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content: "Navigation failed: " + r.error
+              });
+            }
+          } else if (tu.name === "clear_filter") {
+            clearMapFilter();
+            mapActionDesc = "Шүүлтүүрийг арилгалаа";
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: "Filter cleared."
+            });
+          } else if (tu.name === "refuse_operational") {
+            detectedTier = 4;
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: "Refusal acknowledged. Provide refusal message in Mongolian."
+            });
+          }
+        }
+
+        conversationHistory.push({ role: "user", content: toolResults });
+        continue;
+      }
+
+      const finalText = response.content
+        .filter(b => b.type === "text")
+        .map(b => b.text)
+        .join("\n")
+        .trim();
+
+      hideTyping();
+      if (finalText) {
+        addAssistantMessage(finalText, detectedTier, mapActionDesc);
+      }
+      break;
+    }
+  } catch (err) {
+    hideTyping();
+    addAssistantMessage("⚠️ Алдаа: " + err.message);
+    console.error(err);
+  }
+
+  document.getElementById("send").disabled = false;
+}
+</script>
+</body>
+</html>
