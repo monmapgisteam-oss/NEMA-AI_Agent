@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>NEMA AI Launcher</title>
+
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  background:transparent;
+  overflow:hidden;
+  font-family:Arial, sans-serif;
+}
+
+/* Chat button */
+#chatBtn{
+  position:fixed;
+  bottom:20px;
+  left:20px;
+  width:70px;
+  height:70px;
+  border-radius:50%;
+  border:none;
+  cursor:pointer;
+  background:#7b4dff;
+  color:white;
+  font-size:34px;
+  box-shadow:0 6px 18px rgba(0,0,0,.35);
+  z-index:9999;
+  transition:.2s;
+}
+
+#chatBtn:hover{
+  transform:scale(1.08);
+}
+
+/* Popup frame */
+#chatFrame{
+  position:fixed;
+  bottom:100px;
+  left:20px;
+  width:420px;
+  height:700px;
+  border:none;
+  border-radius:22px;
+  overflow:hidden;
+  display:none;
+  background:white;
+  box-shadow:0 15px 40px rgba(0,0,0,.45);
+  z-index:9999;
+}
+
+/* Open state */
+#chatFrame.open{
+  display:block;
+}
+
+/* Mobile */
+@media(max-width:600px){
+
+  #chatFrame{
+    width:95vw;
+    height:80vh;
+    left:2.5vw;
+    bottom:90px;
+  }
+
+  #chatBtn{
+    width:64px;
+    height:64px;
+    font-size:30px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<button id="chatBtn">🤖</button>
+
+<iframe
+  id="chatFrame"
+  src="https://monmapgisteam-oss.github.io/NEMA-AI_Agent/command-center-claude_12.html">
+</iframe>
+
+<script>
+const btn = document.getElementById('chatBtn');
+const frame = document.getElementById('chatFrame');
+
+btn.onclick = () => {
+  frame.classList.toggle('open');
+};
+</script>
+
+</body>
+</html>
