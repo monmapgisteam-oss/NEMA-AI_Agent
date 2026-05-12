@@ -5,90 +5,60 @@
 <title>NEMA AI Launcher</title>
 
 <style>
+
 body{
   margin:0;
   overflow:hidden;
   font-family:Arial, sans-serif;
 }
 
-/* Chat icon button */
+/* Floating button */
+
 #chatBtn{
   position:fixed;
   left:20px;
   bottom:20px;
-  width:70px;
-  height:70px;
-  border-radius:50%;
+
+  width:72px;
+  height:72px;
+
   border:none;
+  border-radius:50%;
+
   cursor:pointer;
+
   background:#7c4dff;
   color:white;
-  font-size:32px;
-  box-shadow:0 4px 16px rgba(0,0,0,.35);
+
+  font-size:34px;
+
+  box-shadow:0 6px 20px rgba(0,0,0,.35);
+
   z-index:99999;
-  transition:0.2s;
+
+  transition:.2s;
 }
 
 #chatBtn:hover{
   transform:scale(1.06);
 }
 
-/* Chat popup window */
-#chatWindow{
-  position:fixed;
-  left:20px;
-  bottom:100px;
-
-  width:1404px;
-  height:858px;
-
-  border-radius:22px;
-  overflow:hidden;
-  display:none;
-
-  box-shadow:0 10px 35px rgba(0,0,0,.45);
-
-  z-index:99999;
-  background:white;
-}
-
-/* iframe */
-#chatWindow iframe{
-  width:100%;
-  height:100%;
-  border:none;
-}
 </style>
 </head>
 
 <body>
 
-<!-- Launcher button -->
 <button id="chatBtn">🤖</button>
-
-<!-- Popup -->
-<div id="chatWindow">
-
-  <iframe
-    src="https://monmapgisteam-oss.github.io/NEMA-AI_Agent/command-center-claude_12.html"
-    allow="clipboard-write"
-  ></iframe>
-
-</div>
 
 <script>
 
-const btn = document.getElementById("chatBtn");
-const win = document.getElementById("chatWindow");
+document.getElementById("chatBtn").onclick = () => {
 
-/* Open / Close */
-btn.onclick = () => {
-
-  if(win.style.display === "block"){
-    win.style.display = "none";
-  }else{
-    win.style.display = "block";
-  }
+  window.open(
+    "https://monmapgisteam-oss.github.io/NEMA-AI_Agent/command-center-claude_12.html",
+    "NEMA_AI",
+    "width=540,height=820,left=80,top=40"
+  );
 
 };
 
